@@ -17,6 +17,7 @@ def ingest_posts(begin_date, end_date):
             password='Shreshth@2023',
             database='social_media'  # Specify your database name here
         ) 
+        conn.reconnect()
         cursor = conn.cursor()
         
         # Insert posts into the database

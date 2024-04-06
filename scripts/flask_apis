@@ -51,31 +51,23 @@ def tag_stats():
 def top_posts():
     begin_date = request.args.get('begin_date')
     end_date = request.args.get('end_date')
-    
+    ##query to ignore day but just list all the top posts in a month
     query = """
-        SELECT *, (reposts / 10 + likes / 15) AS score
-        FROM post
-        WHERE date BETWEEN %s AND %s
-        ORDER BY DATE_FORMAT(date, '%Y-%m'), score DESC
+        SELECT *
+            FROM (
+                SELECT *,
+                    (reposts / 10 + likes / 15) AS score,
+                    ROW_NUMBER() OVER (PARTITION BY DATE_FORMAT(date, '%Y-%m') ORDER BY (reposts / 10 + likes / 15) DESC) AS r
+                FROM post
+                WHERE YEAR(date) * 100 + MONTH(date) BETWEEN YEAR(%s) * 100 + MONTH(%s) AND YEAR(%s) * 100 + MONTH(%s)
+            ) AS ranked_posts
+            WHERE r <= 3
+            ORDER BY DATE_FORMAT(date, '%Y-%m'), score DESC
     """
-    args = (begin_date, end_date)
+    args = (begin_date, begin_date, end_date, end_date)  # Pass begin_date and end_date twice
     results = execute_query(query, args)
     
-    # Group posts by month
-    posts_by_month = {}
-    for post in results:
-        month = post[1].strftime('%Y-%m')  # Assuming the date is the second column
-        if month not in posts_by_month:
-            posts_by_month[month] = []
-        posts_by_month[month].append(post)
-
-
-    # Getting the top three posts per month
-    top_posts = []
-    for month, posts in posts_by_month.items():
-        top_posts.extend(sorted(posts, key=lambda x: x[-1], reverse=True)[:3])
-
-    return jsonify(top_posts)
+    return jsonify(results)
 
 if __name__ == '__main__':
     app.run(debug=True)
