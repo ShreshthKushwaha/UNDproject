@@ -1,0 +1,81 @@
+from flask import Flask, request, jsonify
+import mysql.connector
+
+app = Flask(__name__)
+
+# Connecting to MySQL server
+conn = mysql.connector.connect(
+    host='localhost',
+    user='root',
+    password='Shreshth@2023',
+    database='social_media'
+)
+
+def execute_query(query, args=None):
+    conn.reconnect()
+    cursor = conn.cursor()
+    cursor.execute(query, args)
+    result = cursor.fetchall()
+    conn.close()
+    return result
+
+@app.route('/search', methods=['GET'])
+def search_posts():
+    begin_date = request.args.get('begin_date')
+    end_date = request.args.get('end_date')
+    search_term = request.args.get('search_term')
+    
+    query = """
+        SELECT * FROM post
+        WHERE date BETWEEN %s AND %s
+        AND message LIKE %s
+    """
+    args = (begin_date, end_date, f'%{search_term}%')
+    results = execute_query(query, args)
+    
+    return jsonify(results)
+
+@app.route('/tag_stats', methods=['GET'])
+def tag_stats():
+    query = """
+        SELECT tag.name, COUNT(*) as post_count
+        FROM tag
+        INNER JOIN post_tags ON tag.id = post_tags.tag_id
+        GROUP BY tag.name
+    """
+    results = execute_query(query)
+    
+    return jsonify(results)
+
+@app.route('/top_posts', methods=['GET'])
+def top_posts():
+    begin_date = request.args.get('begin_date')
+    end_date = request.args.get('end_date')
+    
+    query = """
+        SELECT *, (reposts / 10 + likes / 15) AS score
+        FROM post
+        WHERE date BETWEEN %s AND %s
+        ORDER BY DATE_FORMAT(date, '%Y-%m'), score DESC
+    """
+    args = (begin_date, end_date)
+    results = execute_query(query, args)
+    
+    # Group posts by month
+    posts_by_month = {}
+    for post in results:
+        month = post[1].strftime('%Y-%m')  # Assuming the date is the second column
+        if month not in posts_by_month:
+            posts_by_month[month] = []
+        posts_by_month[month].append(post)
+
+
+    # Getting the top three posts per month
+    top_posts = []
+    for month, posts in posts_by_month.items():
+        top_posts.extend(sorted(posts, key=lambda x: x[-1], reverse=True)[:3])
+
+    return jsonify(top_posts)
+
+if __name__ == '__main__':
+    app.run(debug=True)
