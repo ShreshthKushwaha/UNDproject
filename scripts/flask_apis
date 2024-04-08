@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify,url_for,request
 import mysql.connector
 import sqlalchemy
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -12,6 +13,31 @@ conn = mysql.connector.connect(
     database='social_media'
 )
 
+def validate_date_format(date_str):
+    try:
+        datetime.strptime(date_str, '%Y-%m-%d')
+        return True
+    except ValueError:
+        return False
+    
+def validate_date_range(begin_date, end_date):
+    begin_date_obj = datetime.strptime(begin_date, '%Y-%m-%d')
+    end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
+
+    # Validate begin_date is smaller than or equal to end_date
+    if begin_date_obj > end_date_obj:
+        return False
+    return True    
+
+def validate(begin_date, end_date):
+    if not validate_date_format(begin_date) or not validate_date_format(end_date):
+        return False, "Invalid date format. Use 'YYYY-MM-DD' format."
+    
+    if not validate_date_range(begin_date, end_date):
+        return False, "begin_date should be smaller than or equal to end_date."
+    
+    return True, None
+    
 def execute_query(query, args=None):
     conn.reconnect()
     cursor = conn.cursor()
@@ -34,6 +60,11 @@ def execute_query(query, args=None):
 def search_posts():
     begin_date = request.args.get('begin_date')
     end_date = request.args.get('end_date')
+    valid_result=validate(begin_date, end_date)
+    if valid_result[0]==False:
+        return jsonify(valid_result[1])
+
+
     search_term = request.args.get('search_term')
 
     try:
@@ -44,8 +75,9 @@ def search_posts():
     
     query = """
         SELECT * FROM post
-        WHERE date BETWEEN %s AND %s
+        WHERE DATE(date) BETWEEN %s AND %s
         AND message LIKE %s
+        order by date asc
     """
     args = (begin_date, end_date, f'%{search_term}%')
     results = execute_query(query, args)
@@ -68,13 +100,16 @@ def tag_stats():
 def top_posts():
     begin_date = request.args.get('begin_date')
     end_date = request.args.get('end_date')
+    valid_result=validate(begin_date, end_date)
+    if valid_result[0]==False:
+        return jsonify(valid_result[1])
     ##query to ignore day but just list all the top posts in a month
     query = """
         SELECT *
             FROM (
                 SELECT *,
                     (reposts / 10 + likes / 15) AS score,
-                    ROW_NUMBER() OVER (PARTITION BY DATE_FORMAT(date, '%Y-%m') ORDER BY (reposts / 10 + likes / 15) DESC) AS r
+                    ROW_NUMBER() OVER (PARTITION BY DATE_FORMAT(date, '%Y-%m') ORDER BY (reposts / 10 + likes / 15) DESC, date ASC) AS r
                 FROM post
                 WHERE YEAR(date) * 100 + MONTH(date) BETWEEN YEAR(%s) * 100 + MONTH(%s) AND YEAR(%s) * 100 + MONTH(%s)
             ) AS ranked_posts

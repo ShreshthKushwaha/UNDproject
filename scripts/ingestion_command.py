@@ -81,7 +81,7 @@ def ingest_posts_range(start_date, end_date):
 
 
 #database 
-ingest_posts_range('2024-01-01', '2024-04-05')
+ingest_posts_range('2022-01-01', '2024-04-05')
 
 
 
