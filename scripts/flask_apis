@@ -2,8 +2,31 @@ from flask import Flask, request, jsonify,url_for,request
 import mysql.connector
 import sqlalchemy
 from datetime import datetime
+import time
 
 app = Flask(__name__)
+
+# Dictionary to store the last request time for each IP address
+last_request_time = {}
+
+
+# Rate limiter middleware
+@app.before_request
+def limit_request_rate():
+    ip_address = request.remote_addr
+    current_time = time.time()
+    rate_limit = 2  # 2 requests per second
+
+    # Check if the IP address has made a request before
+    if ip_address in last_request_time:
+        last_time = last_request_time[ip_address]
+        # Check if less than 1 second has passed since the last request
+        if current_time - last_time < 1/rate_limit:
+            # Return a response indicating that the request is too frequent
+            return jsonify({"error": "Too many requests. Please wait a moment before trying again."}), 429
+
+    # Update the last request time for the IP address
+    last_request_time[ip_address] = current_time
 
 # Connecting to MySQL server
 conn = mysql.connector.connect(
