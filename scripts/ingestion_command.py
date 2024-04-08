@@ -117,7 +117,7 @@ def takeInputs():
     if valid_result[0]==False:
         return valid_result[1]
     ingest_posts_range(startDate, endDate)
-    return "Ingestion completed successfully"
+    return "✅ Ingestion completed successfully ✅"
 
 
 print (takeInputs())
