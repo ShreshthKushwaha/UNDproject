@@ -77,13 +77,12 @@ def ingest_posts_range(start_date, end_date):
         ingest_posts(current_date.strftime('%Y-%m-%d'), chunk_end_date.strftime('%Y-%m-%d'))
         
         # Move to the next chunk
-        current_date += delta
+        current_date += timedelta(days=3) 
 
 
 #database 
 ingest_posts_range('2024-01-01', '2024-04-05')
 
-#(2004-01-01, 2011-01-05)
 
 
 

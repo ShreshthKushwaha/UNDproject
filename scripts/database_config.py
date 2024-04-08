@@ -16,6 +16,24 @@ cursor.execute('CREATE DATABASE IF NOT EXISTS social_media')
 # Switch to the social_media database
 cursor.execute('USE social_media')
 
+
+#dropping stale tables
+
+cursor.execute('''
+    DROP TABLE IF EXISTS post_tags
+''')
+
+cursor.execute('''
+    DROP TABLE IF EXISTS tag
+''')
+
+cursor.execute('''
+    DROP TABLE IF EXISTS post
+''')
+
+
+
+
 # Create required tables
 cursor.execute('''
     CREATE TABLE IF NOT EXISTS post (

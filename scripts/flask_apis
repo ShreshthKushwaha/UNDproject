@@ -1,5 +1,6 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify,url_for,request
 import mysql.connector
+import sqlalchemy
 
 app = Flask(__name__)
 
@@ -15,15 +16,31 @@ def execute_query(query, args=None):
     conn.reconnect()
     cursor = conn.cursor()
     cursor.execute(query, args)
-    result = cursor.fetchall()
+    
+    # Fetch column names
+    column_names = [i[0] for i in cursor.description]
+    
+    # Fetch data rows
+    rows = cursor.fetchall()
+    
+    # Combine column names with data rows
+    results = [dict(zip(column_names, row)) for row in rows]
+    
     conn.close()
-    return result
+    return results
+
 
 @app.route('/search', methods=['GET'])
 def search_posts():
     begin_date = request.args.get('begin_date')
     end_date = request.args.get('end_date')
     search_term = request.args.get('search_term')
+
+    try:
+        
+        sqlalchemy.text(search_term)
+    except sqlalchemy.exc.StatementError:
+        return jsonify("Search term contains potentially malicious SQL code.")
     
     query = """
         SELECT * FROM post
@@ -68,6 +85,25 @@ def top_posts():
     results = execute_query(query, args)
     
     return jsonify(results)
+
+
+def has_no_empty_params(rule):
+    defaults = rule.defaults if rule.defaults is not None else ()
+    arguments = rule.arguments if rule.arguments is not None else ()
+    return len(defaults) >= len(arguments)
+
+
+@app.route("/")
+def site_map():
+    links = ["These are the endpoints available. Use them with required parameters to get the desired results via postman or any application",]
+    for rule in app.url_map.iter_rules():
+        # Filter out rules we can't navigate to in a browser
+        # and rules that require parameters
+        if "GET" in rule.methods and has_no_empty_params(rule):
+            url = url_for(rule.endpoint, **(rule.defaults or {}))
+            links.append((request.host_url[0:-1]+url))
+    return jsonify(links)        
+    # links is now a list of url, endpoint tuples
 
 if __name__ == '__main__':
     app.run(debug=True)
