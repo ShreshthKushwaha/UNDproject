@@ -1,14 +1,81 @@
+from functools import wraps
 from flask import Flask, request, jsonify,url_for,request
+from datetime import datetime, timedelta
 import mysql.connector
 import sqlalchemy
 from datetime import datetime
 import time
+import jwt
+import os
 
 app = Flask(__name__)
+
+app.config['SECRET_KEY'] = os.urandom(24)
+users = {
+    'username1': 'password1',
+    # Add more users as needed
+}
+#
+# Generate JWT token for a user
+def generate_jwt(username):
+    payload = {
+        'username': username,
+        'exp': datetime.utcnow() + timedelta(minutes=30)  # Token expiration time
+    }
+    token = jwt.encode(payload, app.config['SECRET_KEY'], algorithm='HS256')
+    return token
+
+
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+    
+    if username in users and users[username] == password:
+        token = generate_jwt(username)
+        return jsonify({'token': token})
+    else:
+        return jsonify({'message': 'Invalid username or password'}), 401
+    # Protected route requiring JWT authentication
+
 
 # Dictionary to store the last request time for each IP address
 last_request_time = {}
 
+# Define the decorator function for JWT authentication
+def jwt_authentication_required(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        token = request.headers.get('Authorization')
+        if not token:
+            return jsonify({'message': 'Missing token'}), 401
+
+        try:
+            payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+            # Add additional checks if needed (e.g., user role, permissions)
+            return func(*args, **kwargs)
+        except jwt.ExpiredSignatureError:
+            return jsonify({'message': 'Token has expired'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'message': 'Invalid token'}), 401
+    return wrapper
+
+@jwt_authentication_required
+@app.route('/protected', methods=['GET'])
+def protected():
+    token = request.headers.get('Authorization')
+    if not token:
+        return jsonify({'message': 'Missing token'}), 401
+
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+        username = payload['username']
+        return jsonify({'message': f'Welcome, {username}!'})
+    except jwt.ExpiredSignatureError:
+        return jsonify({'message': 'Token has expired'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'message': 'Invalid token'}), 401
 
 # Rate limiter middleware
 @app.before_request
@@ -78,71 +145,104 @@ def execute_query(query, args=None):
     conn.close()
     return results
 
-
+@jwt_authentication_required
 @app.route('/search', methods=['GET'])
 def search_posts():
-    begin_date = request.args.get('begin_date')
-    end_date = request.args.get('end_date')
-    valid_result=validate(begin_date, end_date)
-    if valid_result[0]==False:
-        return jsonify(valid_result[1])
-
-
-    search_term = request.args.get('search_term')
-
+    token = request.headers.get('Authorization')
+    if not token:
+        return jsonify({'message': 'Missing token'}), 401
     try:
-        
-        sqlalchemy.text(search_term)
-    except sqlalchemy.exc.StatementError:
-        return jsonify("Search term contains potentially malicious SQL code.")
-    
-    query = """
-        SELECT * FROM post
-        WHERE DATE(date) BETWEEN %s AND %s
-        AND message LIKE %s
-        order by date asc
-    """
-    args = (begin_date, end_date, f'%{search_term}%')
-    results = execute_query(query, args)
-    
-    return jsonify(results)
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+        #username = payload['username']
+        begin_date = request.args.get('begin_date')
+        end_date = request.args.get('end_date')
+        valid_result=validate(begin_date, end_date)
+        if valid_result[0]==False:
+            return jsonify(valid_result[1])
 
+
+        search_term = request.args.get('search_term')
+
+        try:
+            
+            sqlalchemy.text(search_term)
+        except sqlalchemy.exc.StatementError:
+            return jsonify("Search term contains potentially malicious SQL code.")
+        
+        query = """
+            SELECT * FROM post
+            WHERE DATE(date) BETWEEN %s AND %s
+            AND message LIKE %s
+            order by date asc
+        """
+        args = (begin_date, end_date, f'%{search_term}%')
+        results = execute_query(query, args)
+        
+        return jsonify(results)
+
+    except jwt.ExpiredSignatureError:
+        return jsonify({'message': 'Token has expired'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'message': 'Invalid token'}), 401    
+    
+
+@jwt_authentication_required
 @app.route('/tag_stats', methods=['GET'])
 def tag_stats():
-    query = """
-        SELECT tag.name, COUNT(*) as post_count
-        FROM tag
-        INNER JOIN post_tags ON tag.id = post_tags.tag_id
-        GROUP BY tag.name
-    """
-    results = execute_query(query)
+    token = request.headers.get('Authorization')
+    if not token:
+        return jsonify({'message': 'Missing token'}), 401
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+        #username = payload['username']
+        query = """
+            SELECT tag.name, COUNT(*) as post_count
+            FROM tag
+            INNER JOIN post_tags ON tag.id = post_tags.tag_id
+            GROUP BY tag.name
+        """
+        results = execute_query(query)
+        
+        return jsonify(results)
+    except jwt.ExpiredSignatureError:
+        return jsonify({'message': 'Token has expired'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'message': 'Invalid token'}), 401 
     
-    return jsonify(results)
-
+@jwt_authentication_required
 @app.route('/top_posts', methods=['GET'])
 def top_posts():
-    begin_date = request.args.get('begin_date')
-    end_date = request.args.get('end_date')
-    valid_result=validate(begin_date, end_date)
-    if valid_result[0]==False:
-        return jsonify(valid_result[1])
-    ##query to ignore day but just list all the top posts in a month
-    query = """
-        SELECT *
-            FROM (
-                SELECT *,
-                    (reposts / 10 + likes / 15) AS score,
-                    ROW_NUMBER() OVER (PARTITION BY DATE_FORMAT(date, '%Y-%m') ORDER BY (reposts / 10 + likes / 15) DESC, date ASC) AS r
-                FROM post
-                WHERE YEAR(date) * 100 + MONTH(date) BETWEEN YEAR(%s) * 100 + MONTH(%s) AND YEAR(%s) * 100 + MONTH(%s)
-            ) AS ranked_posts
-            WHERE r <= 3
-            ORDER BY DATE_FORMAT(date, '%Y-%m'), score DESC
-    """
-    args = (begin_date, begin_date, end_date, end_date)  # Pass begin_date and end_date twice
-    results = execute_query(query, args)
-    
-    return jsonify(results)
+    token = request.headers.get('Authorization')
+    if not token:
+        return jsonify({'message': 'Missing token'}), 401
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+        begin_date = request.args.get('begin_date')
+        end_date = request.args.get('end_date')
+        valid_result=validate(begin_date, end_date)
+        if valid_result[0]==False:
+            return jsonify(valid_result[1])
+        ##query to ignore day but just list all the top posts in a month
+        query = """
+            SELECT *
+                FROM (
+                    SELECT *,
+                        (reposts / 10 + likes / 15) AS score,
+                        ROW_NUMBER() OVER (PARTITION BY DATE_FORMAT(date, '%Y-%m') ORDER BY (reposts / 10 + likes / 15) DESC, date ASC) AS r
+                    FROM post
+                    WHERE YEAR(date) * 100 + MONTH(date) BETWEEN YEAR(%s) * 100 + MONTH(%s) AND YEAR(%s) * 100 + MONTH(%s)
+                ) AS ranked_posts
+                WHERE r <= 3
+                ORDER BY DATE_FORMAT(date, '%Y-%m'), score DESC
+        """
+        args = (begin_date, begin_date, end_date, end_date)  # Pass begin_date and end_date twice
+        results = execute_query(query, args)
+        
+        return jsonify(results)
+    except jwt.ExpiredSignatureError:
+        return jsonify({'message': 'Token has expired'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'message': 'Invalid token'}), 401  
 
 
 def has_no_empty_params(rule):
