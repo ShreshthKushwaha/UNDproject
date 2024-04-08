@@ -81,9 +81,43 @@ def ingest_posts_range(start_date, end_date):
 
 
 #database 
-ingest_posts_range('2022-01-01', '2024-04-05')
+#ingest_posts_range('2022-01-01', '2024-04-05')
 
 
+def validate_date_format(date_str):
+    try:
+        datetime.strptime(date_str, '%Y-%m-%d')
+        return True
+    except ValueError:
+        return False
+    
+def validate_date_range(begin_date, end_date):
+    begin_date_obj = datetime.strptime(begin_date, '%Y-%m-%d')
+    end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
+
+    # Validate begin_date is smaller than or equal to end_date
+    if begin_date_obj > end_date_obj:
+        return False
+    return True    
+
+def validate(begin_date, end_date):
+    if not validate_date_format(begin_date) or not validate_date_format(end_date):
+        return False, "Invalid date format. Use 'YYYY-MM-DD' format."
+    
+    if not validate_date_range(begin_date, end_date):
+        return False, "begin_date should be smaller than or equal to end_date."
+    
+    return True, None
 
 
+def takeInputs():
+    startDate = input("Enter the start date in 'YYYY-MM-DD' format: ")
+    endDate = input("Enter the end date in 'YYYY-MM-DD' format: ")
+    valid_result=validate(startDate, endDate)
+    if valid_result[0]==False:
+        return valid_result[1]
+    ingest_posts_range(startDate, endDate)
+    return "Ingestion completed successfully"
 
+
+print (takeInputs())
