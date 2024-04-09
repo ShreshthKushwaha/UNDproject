@@ -7,6 +7,7 @@ conn = mysql.connector.connect(
     password='Shreshth@2023'
 )
 
+
 conn.reconnect()
 cursor = conn.cursor()
 

@@ -101,7 +101,7 @@ def ingest_posts_range(start_date, end_date):
         print (min_post_date,start_date,max_post_date,end_date)
         # Check if there are posts in the database
         if start_date >= min_post_date and end_date <= max_post_date:
-            print ("YESSS")
+          
             print("Posts for the specified date range already exist in the database.")
             return
         elif start_date < min_post_date and end_date < max_post_date:
