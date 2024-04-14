@@ -1,2 +1,0 @@
-This is a documentation file. I shall be adding information about the project in this file.
-I should be telling more about features, choices etc about the project here.

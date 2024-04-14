@@ -39,10 +39,6 @@ def login():
         return jsonify({'message': 'Invalid username or password'}), 401
     # Protected route requiring JWT authentication
 
-
-# Dictionary to store the last request time for each IP address
-last_request_time = {}
-
 # Define the decorator function for JWT authentication
 def jwt_authentication_required(func):
     @wraps(func)
@@ -77,7 +73,11 @@ def protected():
     except jwt.InvalidTokenError:
         return jsonify({'message': 'Invalid token'}), 401
 
+
 # Rate limiter middleware
+
+# Dictionary to store the last request time for each IP address
+last_request_time = {}
 @app.before_request
 def limit_request_rate():
     ip_address = request.remote_addr
@@ -139,7 +139,14 @@ def execute_query(query, args=None):
     # Fetch data rows
     rows = cursor.fetchall()
     
-    # Combine column names with data rows
+    # Combine column names with data rows and making array of dictionaties with same column names as keys
+    # for an input like this |  Name  |  Age  |  City   |
+    #                        |--------|-------|---------|
+    #                        | Alice  |  30   |  Paris  |
+    #                        | Bob    |  25   |  Tokyo  | 
+
+    # [ {'Name': 'Alice', 'Age': 30, 'City': 'Paris'},{'Name': 'Bob', 'Age': 25, 'City': 'Tokyo'}
+
     results = [dict(zip(column_names, row)) for row in rows]
     
     conn.close()
@@ -177,7 +184,7 @@ def search_posts():
         """
         args = (begin_date, end_date, f'%{search_term}%')
         results = execute_query(query, args)
-        
+        ##jsonify converts the dictionary into json string format
         return jsonify(results)
 
     except jwt.ExpiredSignatureError:
@@ -195,6 +202,7 @@ def tag_stats():
     try:
         payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
         #username = payload['username']
+        ##joining tags and post_tags table to get the count of posts for each tag
         query = """
             SELECT tag.name, COUNT(*) as post_count
             FROM tag
@@ -259,6 +267,7 @@ def site_map():
         # and rules that require parameters
         if ("GET" in rule.methods or "POST" in rule.methods) and has_no_empty_params(rule):
             url = url_for(rule.endpoint, **(rule.defaults or {}))
+            #removing some extra //
             links.append((request.host_url[0:-1]+url))
     return jsonify(links)        
     # links is now a list of url, endpoint tuples
